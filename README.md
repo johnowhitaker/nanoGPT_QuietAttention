@@ -24,3 +24,5 @@ else:
 ```
 
 You can play with this by running the notebook "QuietAttention Tests", easiest in colab here: https://colab.research.google.com/drive/1ArFoybiGCuNUgJZIbwJn5bXHDW3AQgdB?usp=sharing
+
+The very first test I ran seemed promising but on closer inspection I may have just been unlucky with the random samples I plotted, the notebooks now show the two approaches as about the same in terms of weight/activation distribution. Which means either I've done something silly (@Xenova already spotted one bug in my code) or there really isn't much difference being made. The latter sort of makes sense to me - this is the same as appending a single 0 to the logits, which in most cases I'd expect to have very little difference to the normal attention calculations. I'll try to train some larger models if I get a chance and look more closely at whether it actually helps with the thing it is supposed to affect: the outliers that hurt quantization accuracy. 
