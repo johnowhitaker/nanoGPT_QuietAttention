@@ -15,6 +15,14 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+# The modified softmax version:
+def surftmex(x, dim=-1):
+  maxes = torch.max(x, dim, keepdim=True)[0]
+  x_exp = torch.exp(x-maxes)
+  x_exp_sum = torch.sum(x_exp, dim, keepdim=True)
+  output_custom = x_exp/(1+x_exp_sum) # << The key bit is the +1
+  return output_custom
+
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -41,10 +49,15 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
+        # QuietAttention
+        self.quiet = config.quiet
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        if not self.flash:
+        # PLUS we don't want to use it if testing custom attention stuff
+        if config.use_flash and hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+            self.flash = True
+        else:
             print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
+            self.flash=False
             # causal mask to ensure that attention is only applied to the left in the input sequence
             self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                         .view(1, 1, config.block_size, config.block_size))
@@ -66,7 +79,10 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            att = F.softmax(att, dim=-1)
+            if self.quiet:
+                att = surftmex(att)
+            else:
+                att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
